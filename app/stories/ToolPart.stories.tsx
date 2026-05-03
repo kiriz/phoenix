@@ -1,15 +1,9 @@
-import { css } from "@emotion/react";
 import type { Meta, StoryObj } from "@storybook/react";
 
 import {
   ToolPart,
   type ToolPartType,
 } from "@phoenix/components/agent/ToolPart";
-
-const containerCSS = css`
-  max-width: 780px;
-  width: 100%;
-`;
 
 // ---------------------------------------------------------------------------
 // Mock data helpers
@@ -116,14 +110,9 @@ const approvalRequestedPart = makePart({
 const toolPartMeta = {
   title: "Agent/ToolPart",
   component: ToolPart,
-  decorators: [
-    (Story) => (
-      <div css={containerCSS}>
-        <Story />
-      </div>
-    ),
-  ],
   parameters: {
+    contentMaxWidth: 780,
+    contentMode: "bounded",
     layout: "padded",
   },
 } satisfies Meta<typeof ToolPart>;
