@@ -476,6 +476,11 @@ class PromptToolFunctionDefinition(TypedDict):
     strict: NotRequired[bool]
 
 
+class PromptToolRaw(TypedDict):
+    type: Literal["raw"]
+    raw: Mapping[str, Any]
+
+
 class PromptVersionTag(TypedDict):
     name: str
     id: str
@@ -975,7 +980,7 @@ class PromptToolFunction(TypedDict):
 
 class PromptTools(TypedDict):
     type: Literal["tools"]
-    tools: Sequence[PromptToolFunction]
+    tools: Sequence[Union[PromptToolFunction, PromptToolRaw]]
     tool_choice: NotRequired[
         Union[
             PromptToolChoiceNone,
@@ -1003,6 +1008,9 @@ class SessionData(TypedDict):
     start_time: str
     end_time: str
     traces: Sequence[SessionTraceData]
+    token_count_prompt: NotRequired[int]
+    token_count_completion: NotRequired[int]
+    token_count_total: NotRequired[int]
 
 
 class Span(TypedDict):
@@ -1036,6 +1044,9 @@ class TraceData(TypedDict):
     project_id: str
     start_time: str
     end_time: str
+    token_count_prompt: NotRequired[int]
+    token_count_completion: NotRequired[int]
+    token_count_total: NotRequired[int]
     spans: NotRequired[Sequence[TraceSpanData]]
 
 
