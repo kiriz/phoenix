@@ -166,7 +166,6 @@ from phoenix.server.api.dataloaders import (
 from phoenix.server.api.dataloaders.dataset_labels import DatasetLabelsDataLoader
 from phoenix.server.api.routers import (
     create_auth_router,
-    create_chat_router,
     create_chat_v2_router,
     create_v1_router,
     oauth2_router,
@@ -1230,7 +1229,6 @@ def create_app(
     )
     app.include_router(create_v1_router(authentication_enabled))
     if get_env_dangerously_enable_agents():
-        app.include_router(create_chat_router(authentication_enabled))
         app.include_router(create_chat_v2_router(authentication_enabled))
     app.include_router(router)
     app.include_router(graphql_router)

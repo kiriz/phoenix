@@ -171,10 +171,6 @@ export function useAgentChatPanelState() {
     [defaultModelConfig, setDefaultModelConfig]
   );
 
-  // TODO(chat-v2-migration): remove this selector once /chat-v2 is the only endpoint.
-  const useV2Endpoint = useAgentContext(
-    (state) => state.capabilities["chat.useV2Endpoint"]
-  );
   const providerSearchParams = useMemo(
     () =>
       new URLSearchParams({
@@ -189,11 +185,10 @@ export function useAgentChatPanelState() {
     [menuValue]
   );
 
-  const chatApiUrl = useMemo(() => {
-    // TODO(chat-v2-migration): inline `/chat-v2` once the toggle is removed.
-    const path = useV2Endpoint ? "/chat-v2" : "/chat";
-    return prependBasename(`${path}?${providerSearchParams}`);
-  }, [providerSearchParams, useV2Endpoint]);
+  const chatApiUrl = useMemo(
+    () => prependBasename(`/chat-v2?${providerSearchParams}`),
+    [providerSearchParams]
+  );
 
   const summarizeApiUrl = useMemo(
     () => prependBasename(`/summarize?${providerSearchParams}`),
