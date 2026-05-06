@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from openinference.instrumentation import using_session
 from pydantic import BaseModel, Field, field_validator
 from pydantic.types import Discriminator
-from pydantic_ai import AgentRunResult
+from pydantic_ai import AgentRunResult, InstrumentationSettings
+from pydantic_ai.models.instrumented import instrument_model
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.request_types import (
     RegenerateMessage,
@@ -24,15 +25,15 @@ from phoenix.config import (
 )
 from phoenix.server.agents.capabilities import AgentCapabilities
 from phoenix.server.agents.chat_params import ChatSearchParamsModel
-from phoenix.server.agents.chat_v2.dependencies import ChatDependencies
-from phoenix.server.agents.chat_v2.pxi_agent import ChatOutput, create_pxi_agent
 from phoenix.server.agents.context import (
     ChatContext,
     resolve_contexts,
 )
+from phoenix.server.agents.dependencies import ChatDependencies
 from phoenix.server.agents.exceptions import AgentError
 from phoenix.server.agents.instrumentation import get_tracer_provider
 from phoenix.server.agents.model_factory import build_chat_model
+from phoenix.server.agents.pxi_agent import ChatOutput, create_pxi_agent
 from phoenix.server.agents.summarization import SummarizationError, summarize_messages
 from phoenix.server.bearer_auth import is_authenticated
 
@@ -59,7 +60,7 @@ _RequestData = Annotated[
 
 
 class _SummarizeRequest(BaseModel):
-    """Body for POST /summarize.
+    """Body for POST /agent-sessions/{session_id}/summary.
 
     Carries the Vercel-style messages array; the backend owns the prompt and
     the structured-output tool schema."""
@@ -92,19 +93,19 @@ logger = logging.getLogger(__name__)
 
 
 def _log_run_complete(result: AgentRunResult[Any]) -> None:
-    """Log the full message history after a chat-v2 agent run completes."""
+    """Log the full message history after an agent run completes."""
     messages = result.all_messages()
-    logger.info("chat-v2 run complete: %d messages", len(messages))
+    logger.info("agent run complete: %d messages", len(messages))
     for message in messages:
         logger.info("%s", message)
 
 
-def create_chat_v2_router(authentication_enabled: bool) -> APIRouter:
+def create_agents_router(authentication_enabled: bool) -> APIRouter:
     dependencies = [Depends(is_authenticated)] if authentication_enabled else []
     router = APIRouter(tags=["chat"], dependencies=dependencies)
 
-    @router.post("/assistant-sessions/{session_id}/chat")
-    async def chat_v2(
+    @router.post("/agent-sessions/{session_id}/chat")
+    async def chat(
         session_id: str,
         request: Request,
         params: Annotated[ChatSearchParamsModel, Query()],
@@ -121,7 +122,7 @@ def create_chat_v2_router(authentication_enabled: bool) -> APIRouter:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
         logger.info(
-            "chat-v2 model: %s.%s settings=%r",
+            "agent model: %s.%s settings=%r",
             type(model).__module__,
             type(model).__qualname__,
             getattr(model, "settings", None),
@@ -153,8 +154,12 @@ def create_chat_v2_router(authentication_enabled: bool) -> APIRouter:
 
         return adapter.streaming_response(_stream_with_session())
 
-    @router.post("/summarize", response_model=_SummarizeResponse)
+    @router.post(
+        "/agent-sessions/{session_id}/summary",
+        response_model=_SummarizeResponse,
+    )
     async def summarize_endpoint(
+        session_id: str,
         request: Request,
         params: Annotated[ChatSearchParamsModel, Query()],
         body: _SummarizeRequest,
@@ -169,9 +174,21 @@ def create_chat_v2_router(authentication_enabled: bool) -> APIRouter:
         except AgentError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
+        tracer_provider = get_tracer_provider(
+            collector_endpoint=get_env_phoenix_agents_collector_endpoint(),
+            collector_api_key=get_env_phoenix_agents_collector_api_key(),
+            project_name=get_env_phoenix_agents_assistant_project_name(),
+        )
+        if tracer_provider is not None:
+            model = instrument_model(
+                model,
+                InstrumentationSettings(tracer_provider=tracer_provider),
+            )
+
         history = VercelAIAdapter.load_messages(body.messages)
         try:
-            result = await summarize_messages(messages=history, model=model)
+            with using_session(session_id=session_id):
+                result = await summarize_messages(messages=history, model=model)
         except SummarizationError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         return _SummarizeResponse(summary=result.summary.strip())

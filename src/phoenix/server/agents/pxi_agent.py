@@ -4,16 +4,16 @@ from pydantic_ai.agent import InstrumentationSettings
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models import Model
 
-from phoenix.server.agents.chat_v2.dependencies import ChatDependencies
-from phoenix.server.agents.chat_v2.toolsets import build_chat_v2_toolsets
 from phoenix.server.agents.context import (
     build_phoenix_context_user_message_content,
     insert_context_user_message,
 )
+from phoenix.server.agents.dependencies import ChatDependencies
 from phoenix.server.agents.prompts import (
     AGENT_STATIC_SYSTEM_PROMPT,
     build_agent_dynamic_system_prompt,
 )
+from phoenix.server.agents.tools import build_pxi_toolsets
 
 ChatOutput = str | DeferredToolRequests
 
@@ -55,7 +55,7 @@ def create_pxi_agent(
         deps_type=ChatDependencies,
         output_type=[str, DeferredToolRequests],
         instructions=[AGENT_STATIC_SYSTEM_PROMPT, _build_dynamic_instructions],
-        toolsets=[lambda ctx: build_chat_v2_toolsets(ctx.deps)],
+        toolsets=[lambda ctx: build_pxi_toolsets(ctx.deps)],
         history_processors=[_inject_ui_context],
         instrument=instrument,
     )

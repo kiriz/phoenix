@@ -1886,7 +1886,7 @@ class TestVercelChatStreamRouterAuth:
 
     @pytest.fixture
     def _path(self) -> str:
-        return "/assistant-sessions/test-session-id/chat"
+        return "/agent-sessions/test-session-id/chat"
 
     def test_unauthenticated_request_is_rejected(
         self,

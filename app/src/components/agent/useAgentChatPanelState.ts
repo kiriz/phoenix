@@ -191,14 +191,16 @@ export function useAgentChatPanelState() {
     // this empty string is never actually fetched.
     if (activeSessionId === null) return "";
     return prependBasename(
-      `/assistant-sessions/${encodeURIComponent(activeSessionId)}/chat?${providerSearchParams}`
+      `/agent-sessions/${encodeURIComponent(activeSessionId)}/chat?${providerSearchParams}`
     );
   }, [providerSearchParams, activeSessionId]);
 
-  const summarizeApiUrl = useMemo(
-    () => prependBasename(`/summarize?${providerSearchParams}`),
-    [providerSearchParams]
-  );
+  const summarizeApiUrl = useMemo(() => {
+    if (activeSessionId === null) return "";
+    return prependBasename(
+      `/agent-sessions/${encodeURIComponent(activeSessionId)}/summary?${providerSearchParams}`
+    );
+  }, [providerSearchParams, activeSessionId]);
 
   const refreshSessionContext = useCallback(
     async ({
