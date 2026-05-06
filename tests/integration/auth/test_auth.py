@@ -1879,19 +1879,23 @@ class TestVercelChatStreamRouterAuth:
         return {
             "trigger": "submit-message",
             "id": "test-msg-id",
-            "session_id": "test-session-id",
             "messages": [
                 {"id": "msg-1", "role": "user", "parts": [{"type": "text", "text": "hi"}]}
             ],
         }
+
+    @pytest.fixture
+    def _path(self) -> str:
+        return "/assistant-sessions/test-session-id/chat"
 
     def test_unauthenticated_request_is_rejected(
         self,
         _app: _AppInfo,
         _params: dict[str, str],
         _body: dict[str, Any],
+        _path: str,
     ) -> None:
-        response = _httpx_client(_app).post("/chat-v2", params=_params, json=_body)
+        response = _httpx_client(_app).post(_path, params=_params, json=_body)
         with _EXPECTATION_401:
             response.raise_for_status()
 
@@ -1903,11 +1907,12 @@ class TestVercelChatStreamRouterAuth:
         _app: _AppInfo,
         _params: dict[str, str],
         _body: dict[str, Any],
+        _path: str,
     ) -> None:
         user = _get_user(_app, role_or_user)
         logged_in_user = user.log_in(_app)
         response = _httpx_client(_app, logged_in_user.tokens).post(
-            "/chat-v2", params=_params, json=_body
+            _path, params=_params, json=_body
         )
         assert response.status_code == 200
 
@@ -1919,11 +1924,12 @@ class TestVercelChatStreamRouterAuth:
         _app: _AppInfo,
         _params: dict[str, str],
         _body: dict[str, Any],
+        _path: str,
     ) -> None:
         user = _get_user(_app, role_or_user)
         logged_in_user = user.log_in(_app)
         api_key = logged_in_user.create_api_key(_app)
-        response = _httpx_client(_app, api_key).post("/chat-v2", params=_params, json=_body)
+        response = _httpx_client(_app, api_key).post(_path, params=_params, json=_body)
         assert response.status_code == 200
 
 

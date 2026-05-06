@@ -185,10 +185,15 @@ export function useAgentChatPanelState() {
     [menuValue]
   );
 
-  const chatApiUrl = useMemo(
-    () => prependBasename(`/chat-v2?${providerSearchParams}`),
-    [providerSearchParams]
-  );
+  const chatApiUrl = useMemo(() => {
+    // The session id is part of the path so the URL is session-scoped. Until
+    // a session exists the chat hook short-circuits all network activity, so
+    // this empty string is never actually fetched.
+    if (activeSessionId === null) return "";
+    return prependBasename(
+      `/assistant-sessions/${encodeURIComponent(activeSessionId)}/chat?${providerSearchParams}`
+    );
+  }, [providerSearchParams, activeSessionId]);
 
   const summarizeApiUrl = useMemo(
     () => prependBasename(`/summarize?${providerSearchParams}`),

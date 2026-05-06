@@ -42,7 +42,6 @@ class _ChatMessageMixin(BaseModel):
 
     contexts: list[ChatContext] = Field(default_factory=list)
     capabilities: AgentCapabilities = Field(default_factory=AgentCapabilities)
-    session_id: str
 
 
 class _SubmitMessage(_ChatMessageMixin, SubmitMessage):
@@ -104,8 +103,9 @@ def create_chat_v2_router(authentication_enabled: bool) -> APIRouter:
     dependencies = [Depends(is_authenticated)] if authentication_enabled else []
     router = APIRouter(tags=["chat"], dependencies=dependencies)
 
-    @router.post("/chat-v2")
+    @router.post("/assistant-sessions/{session_id}/chat")
     async def chat_v2(
+        session_id: str,
         request: Request,
         params: Annotated[ChatSearchParamsModel, Query()],
         body: _RequestData,
@@ -147,7 +147,7 @@ def create_chat_v2_router(authentication_enabled: bool) -> APIRouter:
         )
 
         async def _stream_with_session() -> AsyncIterator[BaseChunk]:
-            with using_session(session_id=body.session_id):
+            with using_session(session_id=session_id):
                 async for chunk in adapter.run_stream(deps=deps, on_complete=_log_run_complete):
                     yield chunk
 

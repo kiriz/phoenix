@@ -90,7 +90,6 @@ export function useAgentChat({
                     messages,
                     trigger,
                     messageId,
-                    sessionId,
                     capabilities: store.getState().capabilities,
                     observability: store.getState().observability,
                     hasRemoteCollector: Boolean(
