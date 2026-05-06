@@ -1878,6 +1878,7 @@ class TestVercelChatStreamRouterAuth:
     def _body(self) -> dict[str, Any]:
         return {
             "id": "test-msg-id",
+            "session_id": "test-session-id",
             "messages": [
                 {"id": "msg-1", "role": "user", "parts": [{"type": "text", "text": "hi"}]}
             ],
@@ -1889,7 +1890,7 @@ class TestVercelChatStreamRouterAuth:
         _params: dict[str, str],
         _body: dict[str, Any],
     ) -> None:
-        response = _httpx_client(_app).post("/chat", params=_params, json=_body)
+        response = _httpx_client(_app).post("/chat-v2", params=_params, json=_body)
         with _EXPECTATION_401:
             response.raise_for_status()
 
@@ -1905,7 +1906,7 @@ class TestVercelChatStreamRouterAuth:
         user = _get_user(_app, role_or_user)
         logged_in_user = user.log_in(_app)
         response = _httpx_client(_app, logged_in_user.tokens).post(
-            "/chat", params=_params, json=_body
+            "/chat-v2", params=_params, json=_body
         )
         assert response.status_code == 200
 
@@ -1921,7 +1922,7 @@ class TestVercelChatStreamRouterAuth:
         user = _get_user(_app, role_or_user)
         logged_in_user = user.log_in(_app)
         api_key = logged_in_user.create_api_key(_app)
-        response = _httpx_client(_app, api_key).post("/chat", params=_params, json=_body)
+        response = _httpx_client(_app, api_key).post("/chat-v2", params=_params, json=_body)
         assert response.status_code == 200
 
 
