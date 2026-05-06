@@ -1877,6 +1877,7 @@ class TestVercelChatStreamRouterAuth:
     @pytest.fixture
     def _body(self) -> dict[str, Any]:
         return {
+            "trigger": "submit-message",
             "id": "test-msg-id",
             "session_id": "test-session-id",
             "messages": [
