@@ -52,6 +52,7 @@ def create_pxi_agent(
     )
     return Agent(
         model,
+        name="PXIAgent",
         deps_type=ChatDependencies,
         output_type=[str, DeferredToolRequests],
         instructions=[AGENT_STATIC_SYSTEM_PROMPT, _build_dynamic_instructions],
