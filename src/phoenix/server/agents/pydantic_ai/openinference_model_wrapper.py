@@ -154,13 +154,8 @@ class OpenInferenceModelWrapper(WrapperModel):
                     }
                 )
 
-            try:
-                yield set_response
-                span.set_status(Status(StatusCode.OK))
-            except BaseException as exc:
-                span.record_exception(exc)
-                span.set_status(Status(StatusCode.ERROR, str(exc)))
-                raise
+            yield set_response
+            span.set_status(Status(StatusCode.OK))
 
 
 def _to_oi_provider(

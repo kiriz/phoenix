@@ -76,6 +76,44 @@ def wrapped_agent(
     return OpenInferenceAgentWrapper(inner, tracer_provider=tracer_provider)
 
 
+@pytest.fixture
+def raising_model() -> WrapperModel:
+    """A model that always raises on request, used to exercise the wrapper's
+    exception-handling path without hitting the network."""
+
+    class _RaisingWrapperModel(WrapperModel):
+        async def request(
+            self,
+            messages: list[ModelMessage],
+            model_settings: ModelSettings | None,
+            model_request_parameters: ModelRequestParameters,
+        ) -> ModelResponse:
+            raise RuntimeError("boom from raising model")
+
+        @asynccontextmanager
+        async def request_stream(
+            self,
+            messages: list[ModelMessage],
+            model_settings: ModelSettings | None,
+            model_request_parameters: ModelRequestParameters,
+            run_context: Any = None,
+        ) -> AsyncIterator[StreamedResponse]:
+            raise RuntimeError("boom from raising model")
+            yield  # pragma: no cover
+
+    return _RaisingWrapperModel(TestModel())
+
+
+@pytest.fixture
+def raising_agent(
+    raising_model: WrapperModel,
+    tracer_provider: TracerProvider,
+) -> OpenInferenceAgentWrapper[None, str]:
+    """An OpenInferenceAgentWrapper whose underlying model always raises."""
+    inner: Agent[None, str] = Agent(raising_model, deps_type=type(None))
+    return OpenInferenceAgentWrapper(inner, tracer_provider=tracer_provider)
+
+
 def _get_agent_span(spans: tuple[ReadableSpan, ...]) -> ReadableSpan:
     matches = [
         span for span in spans if (span.attributes or {}).get(OPENINFERENCE_SPAN_KIND) == AGENT
@@ -226,44 +264,6 @@ async def test_run_stream_emits_agent_span(
     assert llm_span.parent.span_id == agent_span.context.span_id
 
 
-@pytest.fixture
-def raising_model() -> WrapperModel:
-    """A model that always raises on request, used to exercise the wrapper's
-    exception-handling path without hitting the network."""
-
-    class _RaisingWrapperModel(WrapperModel):
-        async def request(
-            self,
-            messages: list[ModelMessage],
-            model_settings: ModelSettings | None,
-            model_request_parameters: ModelRequestParameters,
-        ) -> ModelResponse:
-            raise RuntimeError("boom from raising model")
-
-        @asynccontextmanager
-        async def request_stream(
-            self,
-            messages: list[ModelMessage],
-            model_settings: ModelSettings | None,
-            model_request_parameters: ModelRequestParameters,
-            run_context: Any = None,
-        ) -> AsyncIterator[StreamedResponse]:
-            raise RuntimeError("boom from raising model")
-            yield  # pragma: no cover
-
-    return _RaisingWrapperModel(TestModel())
-
-
-@pytest.fixture
-def raising_agent(
-    raising_model: WrapperModel,
-    tracer_provider: TracerProvider,
-) -> OpenInferenceAgentWrapper[None, str]:
-    """An OpenInferenceAgentWrapper whose underlying model always raises."""
-    inner: Agent[None, str] = Agent(raising_model, deps_type=type(None))
-    return OpenInferenceAgentWrapper(inner, tracer_provider=tracer_provider)
-
-
 async def test_iter_records_exception_when_run_fails(
     raising_agent: OpenInferenceAgentWrapper[None, str],
     in_memory_span_exporter: InMemorySpanExporter,
@@ -278,9 +278,9 @@ async def test_iter_records_exception_when_run_fails(
     assert agent_span.status.status_code == StatusCode.ERROR
     assert agent_span.status.description == "RuntimeError: boom from raising model"
 
-    exception_events = [e for e in agent_span.events if e.name == "exception"]
-    assert len(exception_events) == 1
-    (exception_event,) = exception_events
+    assert len(agent_span.events) == 1
+    (exception_event,) = agent_span.events
+    assert exception_event.name == "exception"
     exception_attributes = dict(exception_event.attributes or {})
     assert exception_attributes.pop("exception.type") == "RuntimeError"
     assert exception_attributes.pop("exception.message") == "boom from raising model"

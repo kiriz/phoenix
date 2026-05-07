@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any
 
 import pytest
 from openinference.semconv.trace import (
@@ -30,8 +33,10 @@ from pydantic_ai.messages import (
     ToolReturnPart,
     UserPromptPart,
 )
-from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.models import ModelRequestParameters, StreamedResponse
 from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.test import TestModel
+from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
@@ -59,6 +64,35 @@ def wrapped_model(
 ) -> OpenInferenceModelWrapper:
     inner = AnthropicModel(MODEL_NAME, provider=AnthropicProvider())
     return OpenInferenceModelWrapper(inner, tracer_provider=tracer_provider)
+
+
+@pytest.fixture
+def raising_model(tracer_provider: TracerProvider) -> OpenInferenceModelWrapper:
+    """An OpenInferenceModelWrapper whose underlying model raises on request,
+    used to exercise the wrapper's exception-handling path without hitting the
+    network."""
+
+    class _RaisingModel(WrapperModel):
+        async def request(
+            self,
+            messages: list[ModelMessage],
+            model_settings: ModelSettings | None,
+            model_request_parameters: ModelRequestParameters,
+        ) -> ModelResponse:
+            raise RuntimeError("boom from raising model")
+
+        @asynccontextmanager
+        async def request_stream(
+            self,
+            messages: list[ModelMessage],
+            model_settings: ModelSettings | None,
+            model_request_parameters: ModelRequestParameters,
+            run_context: Any = None,
+        ) -> AsyncIterator[StreamedResponse]:
+            raise RuntimeError("boom from raising model")
+            yield  # pragma: no cover
+
+    return OpenInferenceModelWrapper(_RaisingModel(TestModel()), tracer_provider=tracer_provider)
 
 
 async def test_request_emits_llm_span_for_text_response(
@@ -506,6 +540,64 @@ async def test_request_emits_tool_return_message_in_history(
     assert parsed_output["usage"]["output_tokens"] == completion_tokens
     assert attributes.pop(OUTPUT_MIME_TYPE) == JSON
 
+    assert not attributes
+
+
+async def test_request_raises_expected_exception_events(
+    raising_model: OpenInferenceModelWrapper,
+    in_memory_span_exporter: InMemorySpanExporter,
+) -> None:
+    with pytest.raises(RuntimeError, match="boom from raising model"):
+        await raising_model.request(
+            messages=[ModelRequest(parts=[UserPromptPart(content="anything")])],
+            model_settings=None,
+            model_request_parameters=ModelRequestParameters(
+                function_tools=[], builtin_tools=[], output_tools=[]
+            ),
+        )
+
+    spans = in_memory_span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.name == "test"
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.status.description == "RuntimeError: boom from raising model"
+
+    assert len(span.events) == 1
+    (exception_event,) = span.events
+    assert exception_event.name == "exception"
+    exception_attributes = dict(exception_event.attributes or {})
+    assert exception_attributes.pop("exception.type") == "RuntimeError"
+    assert exception_attributes.pop("exception.message") == "boom from raising model"
+    assert isinstance(exception_attributes.pop("exception.stacktrace"), str)
+    assert exception_attributes.pop("exception.escaped") == "False"
+    assert not exception_attributes
+
+    attributes = dict(span.attributes or {})
+    assert attributes.pop(OPENINFERENCE_SPAN_KIND) == LLM
+    assert attributes.pop(LLM_PROVIDER) == "test"
+    assert attributes.pop(LLM_SYSTEM) == "test"
+    assert attributes.pop(LLM_MODEL_NAME) == "test"
+    assert attributes.pop(f"{LLM_INPUT_MESSAGES}.0.{MESSAGE_ROLE}") == "user"
+    assert attributes.pop(f"{LLM_INPUT_MESSAGES}.0.{MESSAGE_CONTENT}") == "anything"
+
+    input_value = attributes.pop(INPUT_VALUE)
+    assert isinstance(input_value, str)
+    parsed_input = json.loads(input_value)
+    assert set(parsed_input) == {"messages", "model_settings", "model_request_parameters"}
+    assert parsed_input["model_settings"] is None
+    parsed_messages = parsed_input["messages"]
+    assert len(parsed_messages) == 1
+    parsed_request = parsed_messages[0]
+    assert parsed_request["kind"] == "request"
+    parsed_parts = parsed_request["parts"]
+    assert len(parsed_parts) == 1
+    assert parsed_parts[0]["part_kind"] == "user-prompt"
+    assert parsed_parts[0]["content"] == "anything"
+    assert attributes.pop(INPUT_MIME_TYPE) == JSON
+
+    assert OUTPUT_VALUE not in attributes
+    assert OUTPUT_MIME_TYPE not in attributes
     assert not attributes
 
 
