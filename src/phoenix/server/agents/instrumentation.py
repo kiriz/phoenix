@@ -1,5 +1,4 @@
 from openinference.instrumentation import TracerProvider as OITracerProvider
-from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 from openinference.semconv.resource import ResourceAttributes
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
@@ -20,7 +19,6 @@ def get_tracer_provider(
         Resource.create({ResourceAttributes.PROJECT_NAME: project_name}) if project_name else None
     )
     provider = OITracerProvider(resource=resource)
-    provider.add_span_processor(OpenInferenceSpanProcessor())
     headers: dict[str, str] = {}
     if collector_api_key:
         headers["Authorization"] = f"Bearer {collector_api_key}"

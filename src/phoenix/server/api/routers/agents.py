@@ -6,8 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from openinference.instrumentation import using_session
 from pydantic import BaseModel, Field, field_validator
 from pydantic.types import Discriminator
-from pydantic_ai import AgentRunResult, InstrumentationSettings
-from pydantic_ai.models.instrumented import instrument_model
+from pydantic_ai import AgentRunResult
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.request_types import (
     RegenerateMessage,
@@ -23,6 +22,7 @@ from phoenix.config import (
     get_env_phoenix_agents_collector_api_key,
     get_env_phoenix_agents_collector_endpoint,
 )
+from phoenix.server.agents.agent_factory import ChatOutput, build_agent
 from phoenix.server.agents.capabilities import AgentCapabilities
 from phoenix.server.agents.chat_params import ChatSearchParamsModel
 from phoenix.server.agents.context import (
@@ -32,8 +32,7 @@ from phoenix.server.agents.context import (
 from phoenix.server.agents.dependencies import ChatDependencies
 from phoenix.server.agents.exceptions import AgentError
 from phoenix.server.agents.instrumentation import get_tracer_provider
-from phoenix.server.agents.model_factory import build_chat_model
-from phoenix.server.agents.pxi_agent import ChatOutput, create_pxi_agent
+from phoenix.server.agents.model_factory import build_model
 from phoenix.server.agents.summarization import SummarizationError, summarize_messages
 from phoenix.server.bearer_auth import is_authenticated
 
@@ -111,12 +110,18 @@ def create_agents_router(authentication_enabled: bool) -> APIRouter:
         params: Annotated[ChatSearchParamsModel, Query()],
         body: _RequestData,
     ) -> Response:
+        tracer_provider = get_tracer_provider(
+            collector_endpoint=get_env_phoenix_agents_collector_endpoint(),
+            collector_api_key=get_env_phoenix_agents_collector_api_key(),
+            project_name=get_env_phoenix_agents_assistant_project_name(),
+        )
         try:
             async with request.app.state.db() as session:
-                model = await build_chat_model(
+                model = await build_model(
                     params.root,
                     session=session,
                     decrypt=request.app.state.decrypt,
+                    tracer_provider=tracer_provider,
                 )
         except AgentError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -128,12 +133,7 @@ def create_agents_router(authentication_enabled: bool) -> APIRouter:
             getattr(model, "settings", None),
         )
 
-        tracer_provider = get_tracer_provider(
-            collector_endpoint=get_env_phoenix_agents_collector_endpoint(),
-            collector_api_key=get_env_phoenix_agents_collector_api_key(),
-            project_name=get_env_phoenix_agents_assistant_project_name(),
-        )
-        agent = create_pxi_agent(model, tracer_provider=tracer_provider)
+        agent = build_agent(model, tracer_provider=tracer_provider)
         adapter: VercelAIAdapter[ChatDependencies, ChatOutput] = VercelAIAdapter(
             agent=agent,
             run_input=body,
@@ -164,26 +164,21 @@ def create_agents_router(authentication_enabled: bool) -> APIRouter:
         params: Annotated[ChatSearchParamsModel, Query()],
         body: _SummarizeRequest,
     ) -> _SummarizeResponse:
-        try:
-            async with request.app.state.db() as session:
-                model = await build_chat_model(
-                    params.root,
-                    session=session,
-                    decrypt=request.app.state.decrypt,
-                )
-        except AgentError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-
         tracer_provider = get_tracer_provider(
             collector_endpoint=get_env_phoenix_agents_collector_endpoint(),
             collector_api_key=get_env_phoenix_agents_collector_api_key(),
             project_name=get_env_phoenix_agents_assistant_project_name(),
         )
-        if tracer_provider is not None:
-            model = instrument_model(
-                model,
-                InstrumentationSettings(tracer_provider=tracer_provider),
-            )
+        try:
+            async with request.app.state.db() as session:
+                model = await build_model(
+                    params.root,
+                    session=session,
+                    decrypt=request.app.state.decrypt,
+                    tracer_provider=tracer_provider,
+                )
+        except AgentError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
         history = VercelAIAdapter.load_messages(body.messages)
         try:

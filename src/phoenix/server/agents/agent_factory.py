@@ -1,6 +1,5 @@
-from opentelemetry.trace import TracerProvider
+from opentelemetry.trace import NoOpTracerProvider, TracerProvider
 from pydantic_ai import Agent, DeferredToolRequests, RunContext
-from pydantic_ai.agent import InstrumentationSettings
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models import Model
 
@@ -13,7 +12,11 @@ from phoenix.server.agents.prompts import (
     AGENT_STATIC_SYSTEM_PROMPT,
     build_agent_dynamic_system_prompt,
 )
-from phoenix.server.agents.tools import build_pxi_toolsets
+from phoenix.server.agents.pydantic_ai import (
+    OpenInferenceAgentWrapper,
+    OpenInferenceToolsetWrapper,
+)
+from phoenix.server.agents.tools import build_toolset
 
 ChatOutput = str | DeferredToolRequests
 
@@ -40,23 +43,25 @@ def _inject_ui_context(
     )
 
 
-def create_pxi_agent(
+def build_agent(
     model: Model,
     *,
     tracer_provider: TracerProvider | None = None,
-) -> Agent[ChatDependencies, ChatOutput]:
-    instrument = (
-        InstrumentationSettings(tracer_provider=tracer_provider)
-        if tracer_provider is not None
-        else None
-    )
-    return Agent(
+) -> OpenInferenceAgentWrapper[ChatDependencies, ChatOutput]:
+    provider = tracer_provider or NoOpTracerProvider()
+
+    def _build_toolset(
+        ctx: RunContext[ChatDependencies],
+    ) -> OpenInferenceToolsetWrapper[ChatDependencies]:
+        return build_toolset(ctx.deps, tracer_provider=provider)
+
+    agent = Agent(
         model,
         name="PXIAgent",
         deps_type=ChatDependencies,
         output_type=[str, DeferredToolRequests],
         instructions=[AGENT_STATIC_SYSTEM_PROMPT, _build_dynamic_instructions],
-        toolsets=[lambda ctx: build_pxi_toolsets(ctx.deps)],
+        toolsets=[_build_toolset],
         history_processors=[_inject_ui_context],
-        instrument=instrument,
     )
+    return OpenInferenceAgentWrapper(agent, tracer_provider=provider)
