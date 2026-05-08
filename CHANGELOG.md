@@ -1,5 +1,12 @@
 # Changelog
 
+## [15.5.2](https://github.com/Arize-ai/phoenix/compare/arize-phoenix-v15.5.1...arize-phoenix-v15.5.2) (2026-05-08)
+
+
+### Bug Fixes
+
+* **pxi:** resolve interrupted tool calls ([#13123](https://github.com/Arize-ai/phoenix/issues/13123)) ([d37dfa0](https://github.com/Arize-ai/phoenix/commit/d37dfa0f54d7f97c76301d175937fd2500d970cc))
+
 ## [15.5.1](https://github.com/Arize-ai/phoenix/compare/arize-phoenix-v15.5.0...arize-phoenix-v15.5.1) (2026-05-08)
 
 
