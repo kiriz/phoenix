@@ -35,7 +35,7 @@ export function shouldSendAutomaticallyAfterToolOutput({
 }
 
 /**
- * Detects the `edit_prompt` lifecycle cancellation emitted when the playground
+ * Detects the `edit_prompt_instance` lifecycle cancellation emitted when the playground
  * route unmounts before the user accepts or rejects a proposed prompt edit.
  * This terminal tool result is useful for the transcript, but it should not
  * trigger an automatic follow-up model request because the user did not provide
