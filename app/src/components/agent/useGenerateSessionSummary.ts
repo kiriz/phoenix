@@ -7,14 +7,18 @@ import { useAgentStore } from "@phoenix/contexts/AgentContext";
 async function fetchSummary({
   summarizeApiUrl,
   messages,
+  ingestTraces,
+  exportRemoteTraces,
 }: {
   summarizeApiUrl: string;
   messages: UIMessage[];
+  ingestTraces: boolean;
+  exportRemoteTraces: boolean;
 }): Promise<string> {
   const response = await authFetch(summarizeApiUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, ingestTraces, exportRemoteTraces }),
   });
   if (!response.ok) {
     throw new Error(`summarize request failed: ${response.status}`);
@@ -52,9 +56,14 @@ export function useGenerateSessionSummary({
 
       requestedSessionsRef.current.add(sessionId);
 
+      const hasRemoteCollector = Boolean(state.agentsConfig.collectorEndpoint);
+
       void fetchSummary({
         summarizeApiUrl,
         messages: session.messages,
+        ingestTraces: state.observability.storeLocalTraces,
+        exportRemoteTraces:
+          state.observability.exportRemoteTraces && hasRemoteCollector,
       })
         .then((summary) => {
           if (summary) {
