@@ -1,13 +1,11 @@
 import { Chat, useChat } from "@ai-sdk/react";
 import type { ChatStatus } from "ai";
-import {
-  DefaultChatTransport,
-  lastAssistantMessageIsCompleteWithToolCalls,
-} from "ai";
+import { DefaultChatTransport } from "ai";
 import { useEffect, useRef } from "react";
 
 import { buildAgentChatRequestBody } from "@phoenix/agent/chat/buildAgentChatRequestBody";
 import { handleAgentToolCall } from "@phoenix/agent/chat/handleAgentToolCall";
+import { shouldSendAutomaticallyAfterToolOutput } from "@phoenix/agent/chat/shouldSendAutomatically";
 import {
   assistantMessageMetadataSchema,
   type AgentUIMessage,
@@ -109,8 +107,7 @@ export function useAgentChat({
                   agentStore: store,
                 });
               },
-              sendAutomaticallyWhen:
-                lastAssistantMessageIsCompleteWithToolCalls,
+              sendAutomaticallyWhen: shouldSendAutomaticallyAfterToolOutput,
               onFinish: ({ messages: finalMessages, message }) => {
                 const usage = message.metadata?.usage;
                 if (usage != null) {
@@ -151,17 +148,12 @@ export function useAgentChat({
     if (!sessionId) {
       return;
     }
-    // edit_prompt approvals may outlive the mounted chat surface. Register the
-    // live tool-output sender so restored pending edits can resolve the original
-    // AI SDK tool call when the user returns to this session.
-    store.getState().registerPromptEditToolOutput(sessionId, addToolOutput);
     return () => {
-      store.getState().unregisterPromptEditToolOutput(sessionId);
       if (sessionId && messagesRef.current.length > 0) {
         store.getState().setSessionMessages(sessionId, messagesRef.current);
       }
     };
-  }, [addToolOutput, sessionId, store]);
+  }, [sessionId, store]);
 
   // Elicitation responses are written back through the runtime-owned chat so
   // the pending tool call resolves against the correct assistant turn.
